@@ -1,25 +1,58 @@
 package main
 
-import(
-  "fmt"
-  "log"
-  "github.com/google/gopacket/pcap"
+import (
+	"fmt"
+	"log"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 func main() {
-  devices, err := pcap.FindAllDevs()
-  if err != nil {
-    log.Fatal(err)
-  }
+	device := "wlp3s0"
+	filter := "tcp and port 80"
 
-  fmt.Println("Devices found:")
-  for _, device := range devices {
-    fmt.Println("\nName: ", device.Name)
-    fmt.Println("Descriptions: ", device.Description)
-    fmt.Println("Devices addresses: ", device.Description)
-    for _, address := range device.Addresses {
-      fmt.Println("- IP address: ", address.IP)
-      fmt.Println("- Subnet mask: ", address.Netmask)
-    }
-  }
+	handle, err := pcap.OpenLive(
+		device, int32(0xFFFF), true, pcap.BlockForever,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer handle.Close()
+	if err := handle.SetBPFFilter(filter); err != nil {
+		log.Fatal(err)
+	}
+
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	for packet := range packetSource.Packets() {
+		printPacketInfo(packet)
+		jsonPacketInfo(packet)
+	}
 }
+
+func printPacketInfo(packet gopacket.Packet) {
+	ethernetLayer := packet.Layer(layers.LayerTypeEthernet)
+	if ethernetLayer != nil {
+		ethernetPacket, _ := ethernetLayer.(*layers.Ethernet)
+		fmt.Println("Src MAC: ", ethernetPacket.SrcMAC)
+		fmt.Println("Dst MAC: ", ethernetPacket.DstMAC)
+	}
+
+	ipLayer := packet.Layer(layers.LayerTypeIPv4)
+	if ipLayer != nil {
+		ip, _ := ipLayer.(*layers.IPv4)
+		fmt.Println("Src IP Address: ", ip.SrcIP)
+		fmt.Println("Dst IP Address: ", ip.DstIP)
+	}
+
+	tcpLayer := packet.Layer(layers.LayerTypeTCP)
+	if tcpLayer != nil {
+		tcp, _ := tcpLayer.(*layers.TCP)
+		fmt.Println("Src Port: ", tcp.SrcPort)
+		fmt.Println("Dst Port: ", tcp.DstPort)
+	}
+	fmt.Println()
+}
+
+func jsonPacketInfo(packet gopacket.Packet) {}
